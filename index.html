@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palette Pro: Theory-Based Color Extractor | Pierre Cochart</title>
+    <meta name="description" content="Extract professional palettes using color theory. Choose from Vibrant, Muted, or High-Contrast presets. Privacy-first image analysis.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #0f172a;
+            --secondary: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); padding: 2rem 1rem; }
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        header { text-align: center; margin-bottom: 3rem; }
+        h1 {
+            font-size: 2.5rem; font-weight: 800;
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        #drop-zone {
+            background: var(--card); border: 2px dashed var(--border);
+            border-radius: 1.5rem; padding: 5rem 2rem; text-align: center; cursor: pointer;
+        }
+        #drop-zone.hidden { display: none; }
+
+        #workspace { display: none; grid-template-columns: 1fr 320px; gap: 2.5rem; animation: fadeIn 0.5s ease; }
+
+        .image-container {
+            position: relative; background: #000; border-radius: 1rem; overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+        #image-preview { width: 100%; display: block; max-height: 60vh; object-fit: contain; }
+        #scanner-line {
+            position: absolute; top: 0; left: 0; width: 2px; height: 100%;
+            background: white; box-shadow: 0 0 15px white; pointer-events: none; z-index: 10;
+        }
+
+        .sidebar { display: flex; flex-direction: column; gap: 1.5rem; }
+        .control-box {
+            background: var(--card); padding: 1.25rem; border-radius: 1rem;
+            border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        }
+
+        label { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.8rem; font-size: 0.85rem; }
+        select, input[type="range"] { width: 100%; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid var(--border); }
+
+        .palette-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .color-row {
+            display: flex; align-items: center; background: var(--card); padding: 0.5rem;
+            border-radius: 0.75rem; border: 1px solid var(--border); cursor: pointer; transition: 0.2s;
+        }
+        .color-row:hover { transform: translateX(5px); border-color: var(--primary); }
+        .swatch { width: 40px; height: 40px; border-radius: 0.4rem; margin-right: 1rem; }
+        .hex-label { font-family: monospace; font-weight: 600; font-size: 0.85rem; }
+
+        .footer-cta { margin-top: 5rem; text-align: center; border-top: 1px solid var(--border); padding-top: 3rem; }
+        #toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: white; padding: 0.75rem 1.5rem;
+            border-radius: 2rem; font-size: 0.85rem; opacity: 0; transition: 0.3s;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Palette Pro</h1>
+            <p class="subtitle">Theory-based color extraction for professionals.</p>
+        </header>
+
+        <div id="drop-zone">
+            <p style="font-size: 1.2rem; font-weight: 600;">Drop an image here</p>
+            <input type="file" id="file-input" hidden accept="image/*">
+        </div>
+
+        <div id="workspace">
+            <div class="image-area">
+                <div class="image-container">
+                    <img id="image-preview" src="">
+                    <div id="scanner-line"></div>
+                </div>
+                <div style="margin-top: 1.5rem;" class="control-box">
+                    <label>Scan Area <span id="skew-val">0%</span></label>
+                    <input type="range" id="skew-slider" min="0" max="100" value="0">
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="control-box">
+                    <label>Extraction Logic</label>
+                    <select id="logic-select">
+                        <option value="dominant">Most Dominant</option>
+                        <option value="vibrant">Vibrant (Highly Saturated)</option>
+                        <option value="muted">Muted (Soft/Pastels)</option>
+                        <option value="contrast">High Contrast</option>
+                    </select>
+                </div>
+
+                <div class="control-box">
+                    <label>Count <span id="count-val">6</span></label>
+                    <input type="range" id="count-slider" min="2" max="10" value="6">
+                </div>
+
+                <div id="palette-output" class="palette-list"></div>
+            </div>
+        </div>
+
+        <footer class="footer-cta">
+            <a href="https://www.buymeacoffee.com/PierreCochart" target="_blank">
+                <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 50px; width: 217px;">
+            </a>
+        </footer>
+    </div>
+
+    <div id="toast">Copied to clipboard!</div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const workspace = document.getElementById('workspace');
+        const img = document.getElementById('image-preview');
+        const scannerLine = document.getElementById('scanner-line');
+        const skewSlider = document.getElementById('skew-slider');
+        const countSlider = document.getElementById('count-slider');
+        const logicSelect = document.getElementById('logic-select');
+        const paletteOutput = document.getElementById('palette-output');
+
+        let canvas = document.createElement('canvas');
+        let ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        skewSlider.oninput = () => { updateUI(); updatePalette(); };
+        countSlider.oninput = () => { updateUI(); updatePalette(); };
+        logicSelect.onchange = () => updatePalette();
+
+        function handleFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                img.src = e.target.result;
+                img.onload = () => {
+                    dropZone.classList.add('hidden');
+                    workspace.style.display = 'grid';
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    ctx.drawImage(img, 0, 0);
+                    updatePalette();
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateUI() {
+            document.getElementById('skew-val').textContent = skewSlider.value + '%';
+            document.getElementById('count-val').textContent = countSlider.value;
+            scannerLine.style.left = skewSlider.value + '%';
+        }
+
+        function updatePalette() {
+            const skew = skewSlider.value / 100;
+            const count = parseInt(countSlider.value);
+            const logic = logicSelect.value;
+            
+            const sampleX = Math.floor(canvas.width * skew);
+            const sampleWidth = Math.max(10, Math.floor(canvas.width * 0.2));
+            const data = ctx.getImageData(Math.min(sampleX, canvas.width - sampleWidth), 0, sampleWidth, canvas.height).data;
+
+            let colors = extractTheoreticalColors(data, count, logic);
+            renderColors(colors);
+        }
+
+        function extractTheoreticalColors(data, count, logic) {
+            let pool = [];
+            for (let i = 0; i < data.length; i += 40) {
+                if (data[i+3] < 128) continue;
+                const r = data[i], g = data[i+1], b = data[i+2];
+                const hsl = rgbToHsl(r, g, b);
+                pool.push({ hex: rgbToHex(r, g, b), r, g, b, ...hsl });
+            }
+
+            if (logic === 'vibrant') {
+                return pool.sort((a, b) => b.s - a.s).slice(0, count).map(c => c.hex);
+            } else if (logic === 'muted') {
+                return pool.filter(c => c.s < 0.4).sort((a, b) => b.l - a.l).slice(0, count).map(c => c.hex);
+            } else if (logic === 'contrast') {
+                pool.sort((a, b) => a.l - b.l);
+                let result = [pool[0].hex, pool[pool.length-1].hex];
+                while(result.length < count) result.push(pool[Math.floor(Math.random()*pool.length)].hex);
+                return result;
+            } else {
+                // Dominant logic
+                let counts = {};
+                pool.forEach(c => counts[c.hex] = (counts[c.hex] || 0) + 1);
+                return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, count).map(i => i[0]);
+            }
+        }
+
+        // Standard Utility Functions
+        function rgbToHsl(r, g, b) {
+            r /= 255; g /= 255; b /= 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+            if (max === min) h = s = 0;
+            else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+                else if (max === g) h = (b - r) / d + 2;
+                else h = (r - g) / d + 4;
+                h /= 6;
+            }
+            return { h, s, l };
+        }
+
+        function rgbToHex(r, g, b) {
+            return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join("");
+        }
+
+        function renderColors(colors) {
+            paletteOutput.innerHTML = '';
+            [...new Set(colors)].forEach(hex => {
+                const row = document.createElement('div');
+                row.className = 'color-row';
+                row.innerHTML = `<div class="swatch" style="background: ${hex}"></div><span class="hex-label">${hex}</span>`;
+                row.onclick = () => {
+                    navigator.clipboard.writeText(hex);
+                    const t = document.getElementById('toast');
+                    t.style.opacity = 1;
+                    setTimeout(() => t.style.opacity = 0, 2000);
+                };
+                paletteOutput.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>
